@@ -6,7 +6,6 @@ Provides setup, status, and run commands.
 from __future__ import annotations
 
 import click
-import sys
 
 
 @click.group()
@@ -26,7 +25,7 @@ def run():
 @main.command()
 def setup():
     """Interactive setup — configure API key and OAuth credentials."""
-    from .config import ensure_config_dir, save_api_key, load_config, API_KEY_PATH
+    from .config import ensure_config_dir, load_config, save_api_key
 
     ensure_config_dir()
     click.echo("=== Axiom Works YouTube MCP Setup ===\n")
@@ -71,7 +70,7 @@ def setup():
     click.echo("=== Setup Complete ===")
     click.echo(f"  Auth tier: {config.auth_tier.name}")
     click.echo(f"  Available tools: {config.available_tool_count}/68")
-    click.echo(f"\nAdd to Claude Code .mcp.json:")
+    click.echo("\nAdd to Claude Code .mcp.json:")
     click.echo('  {')
     click.echo('    "mcpServers": {')
     click.echo('      "youtube": {')
@@ -105,7 +104,8 @@ def status():
 def _setup_google_oauth():
     """Run Google OAuth setup flow."""
     from google_auth_oauthlib.flow import InstalledAppFlow
-    from .config import save_google_oauth, CONFIG_DIR
+
+    from .config import CONFIG_DIR, save_google_oauth
 
     # Check for client secrets file
     client_secrets = CONFIG_DIR / "client_secrets.json"

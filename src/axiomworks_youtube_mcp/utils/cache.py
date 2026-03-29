@@ -21,8 +21,6 @@ import json
 import logging
 import sqlite3
 import time
-from pathlib import Path
-from typing import Any
 
 from ..config import CONFIG_DIR
 
@@ -92,7 +90,6 @@ def get_cached(tool_name: str, params: dict, category: str = "default") -> str |
     """
     db = _get_db()
     key = _make_key(tool_name, params)
-    ttl = TTL.get(category, TTL["default"])
 
     row = db.execute(
         "SELECT value, created_at, ttl_seconds FROM cache WHERE key = ?",

@@ -7,9 +7,10 @@ organized by group and handles the server lifecycle.
 from __future__ import annotations
 
 import logging
+
 from mcp.server.fastmcp import FastMCP
 
-from .config import load_config, ServerConfig, AuthTier
+from .config import ServerConfig, load_config
 
 logger = logging.getLogger(__name__)
 
@@ -943,7 +944,8 @@ async def ytmusic_playlist_add_items(
 
     ytmusic = get_ytmusic_client(require_auth=True)
     result = ytmusic.add_playlist_items(playlist_id, video_ids)
-    return f"Added {len(video_ids)} items to playlist {playlist_id}. Status: {result.get('status', 'ok')}"
+    status = result.get('status', 'ok')
+    return f"Added {len(video_ids)} items to playlist {playlist_id}. Status: {status}"
 
 
 @mcp.tool()
@@ -1500,6 +1502,7 @@ async def youtube_video_upload(
         The new video ID and confirmation.
     """
     from googleapiclient.http import MediaFileUpload
+
     from .clients.youtube import get_youtube_client
 
     creds = require_oauth()
@@ -1577,12 +1580,14 @@ async def youtube_video_update(
         "id": video_id,
         "snippet": {
             "title": title if title is not None else snippet.get("title"),
-            "description": description if description is not None else snippet.get("description", ""),
+            "description": (description if description is not None
+                else snippet.get("description", "")),
             "categoryId": category_id if category_id is not None else snippet.get("categoryId"),
             "tags": tags if tags is not None else snippet.get("tags", []),
         },
         "status": {
-            "privacyStatus": privacy_status if privacy_status is not None else status.get("privacyStatus"),
+            "privacyStatus": (privacy_status if privacy_status is not None
+                else status.get("privacyStatus")),
         },
     }
 
@@ -1626,6 +1631,7 @@ async def youtube_thumbnail_set(
         Confirmation with thumbnail URL.
     """
     from googleapiclient.http import MediaFileUpload
+
     from .clients.youtube import get_youtube_client
 
     creds = require_oauth()
@@ -1749,10 +1755,12 @@ async def youtube_playlist_update(
         "id": playlist_id,
         "snippet": {
             "title": title if title is not None else snippet.get("title"),
-            "description": description if description is not None else snippet.get("description", ""),
+            "description": (description if description is not None
+                else snippet.get("description", "")),
         },
         "status": {
-            "privacyStatus": privacy_status if privacy_status is not None else status.get("privacyStatus"),
+            "privacyStatus": (privacy_status if privacy_status is not None
+                else status.get("privacyStatus")),
         },
     }
 
@@ -1968,7 +1976,7 @@ async def youtube_analytics_demographics(
         endDate=end_date,
         metrics="viewerPercentage",
         dimensions=dimension,
-        sort=f"-viewerPercentage",
+        sort="-viewerPercentage",
     ).execute()
     return _format_analytics_response(response)
 
@@ -2004,7 +2012,7 @@ async def youtube_analytics_revenue(
     }
     if dimensions:
         params["dimensions"] = dimensions
-        params["sort"] = f"-estimatedRevenue"
+        params["sort"] = "-estimatedRevenue"
 
     response = analytics.reports().query(**params).execute()
     return _format_analytics_response(response)

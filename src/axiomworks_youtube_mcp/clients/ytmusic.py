@@ -7,7 +7,6 @@ search, library, playlists, history, charts, and more.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from ytmusicapi import YTMusic
 
