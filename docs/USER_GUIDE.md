@@ -179,15 +179,23 @@ You get more tools as you add credentials:
 
 | Tier | Setup | What You Get |
 |------|-------|-------------|
-| Tier 0 | Nothing | Transcripts + YouTube Music browsing |
-| Tier 1 | API key (30 seconds) | + YouTube search, details, comments |
-| Tier 2 | OAuth (2 minutes) | + Everything: uploads, analytics, library management |
+| Tier 0 | Nothing | Transcripts + YouTube Music search/browse/charts |
+| Tier 1 | API key (30 seconds) | + YouTube search, details, comments (read), trending |
+| Tier 2 | OAuth (5-10 minutes) | + Likes, comments (write), uploads, analytics, live streaming |
+
+**YouTube Music library access** (liked songs, history, personal playlists) requires browser cookie authentication. See the [README setup instructions](../README.md#setting-up-oauth-tier-2) for details.
 
 ### YouTube Music vs YouTube
 
 YouTube Music tools (`ytmusic_*`) use the `ytmusicapi` library which doesn't count against the YouTube API quota. You can search, browse, and manage your music library without worrying about quota limits.
 
 YouTube tools (`youtube_*`) use the official Google API which has quota limits. The caching system helps — repeated queries within 5-30 minutes are served from cache without API calls.
+
+### Known Limitations
+
+- **No remote playback control**: YouTube Music doesn't expose an API for starting/stopping playback on devices. You can create playlists and manage your library, but can't press "play" on your phone remotely.
+- **YouTube Music library access**: Due to limitations in Google's internal API, YouTube Music library features (liked songs, history, personal playlists) require browser cookie authentication rather than OAuth. The OAuth device flow works for YouTube but not for YouTube Music's internal API.
+- **Cookie expiration**: Browser cookies for YouTube Music expire periodically. If library calls stop working, re-run the setup to refresh cookies.
 
 ---
 

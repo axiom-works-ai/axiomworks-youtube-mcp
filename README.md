@@ -78,11 +78,24 @@ axiomworks-youtube-mcp setup
 4. Place it at `~/.config/axiomworks-youtube-mcp/client_secrets.json`
 5. Run `axiomworks-youtube-mcp setup` and follow the OAuth flow
 
-**YouTube Music OAuth** (library, history, playlists):
+**YouTube Music** (library, history, playlists):
 
-1. Create a **second** OAuth client — type: **TVs and Limited Input devices**
-2. Download the JSON and place it at `~/.config/axiomworks-youtube-mcp/client_secrets_tv.json`
-3. Run `axiomworks-youtube-mcp setup` — Step 3 will use the TV client for YouTube Music's device code flow
+YouTube Music library access requires browser cookie authentication due to limitations in Google's internal API. Two options:
+
+**Option A: Interactive setup** (recommended)
+
+1. Run `axiomworks-youtube-mcp setup` and select "Yes" for Step 3
+2. Follow the prompts to paste request headers from Chrome DevTools
+
+**Option B: Manual setup**
+
+1. Open https://music.youtube.com in Chrome while logged in
+2. Open DevTools (F12) → Network tab → click any request to `music.youtube.com`
+3. Right-click the request → Copy → Copy request headers
+4. Run `ytmusicapi setup` and paste the headers when prompted
+5. Move the output file to `~/.config/axiomworks-youtube-mcp/ytmusic-browser.json`
+
+> **Note:** Browser cookies expire periodically. If YouTube Music library calls stop working, re-run the setup to refresh cookies.
 
 ## Tools (68 total)
 
