@@ -242,6 +242,451 @@ async def youtube_channel_details(
     return _format_channel_results(response)
 
 
+# ─── Group 2b: Subscriptions (OAuth required) ─────────────────────────────────
+
+
+@mcp.tool()
+async def youtube_subscriptions_list(
+    max_results: int = 25,
+    order: str = "relevance",
+    page_token: str | None = None,
+) -> str:
+    """List the authenticated user's subscriptions.
+
+    Args:
+        max_results: Number of subscriptions to return (1-50, default 25)
+        order: Sort order — relevance, unread, alphabetical
+        page_token: Token for pagination
+
+    Returns:
+        JSON array of subscribed channels with IDs, titles, and thumbnails.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    params: dict = {
+        "part": "snippet,contentDetails",
+        "mine": True,
+        "maxResults": min(max_results, 50),
+        "order": order,
+    }
+    if page_token:
+        params["pageToken"] = page_token
+
+    response = youtube.subscriptions().list(**params).execute()
+    return _format_json(response)
+
+
+@mcp.tool()
+async def youtube_subscribe(channel_id: str) -> str:
+    """Subscribe to a YouTube channel.
+
+    Args:
+        channel_id: The channel ID to subscribe to
+
+    Returns:
+        Confirmation of the subscription.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    body = {
+        "snippet": {
+            "resourceId": {
+                "kind": "youtube#channel",
+                "channelId": channel_id,
+            }
+        }
+    }
+    response = youtube.subscriptions().insert(part="snippet", body=body).execute()
+    title = response.get("snippet", {}).get("title", channel_id)
+    return f"Subscribed to channel: {title} ({channel_id})"
+
+
+@mcp.tool()
+async def youtube_unsubscribe(subscription_id: str) -> str:
+    """Unsubscribe from a YouTube channel.
+
+    The subscription_id comes from youtube_subscriptions_list.
+
+    Args:
+        subscription_id: The subscription resource ID to remove
+
+    Returns:
+        Confirmation of the unsubscription.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    youtube.subscriptions().delete(id=subscription_id).execute()
+    return f"Unsubscribed (subscription ID: {subscription_id})"
+
+
+# ─── Group 4: Playlist Operations ─────────────────────────────────────────────
+
+
+@mcp.tool()
+async def youtube_playlist_details(
+    playlist_id: str,
+    max_results: int = 25,
+    page_token: str | None = None,
+) -> str:
+    """Get playlist metadata and its video items.
+
+    Args:
+        playlist_id: YouTube playlist ID
+        max_results: Number of items to return (1-50, default 25)
+        page_token: Token for pagination through playlist items
+
+    Returns:
+        Playlist metadata and JSON array of video items with titles and positions.
+    """
+    from .clients.youtube import get_youtube_client
+
+    api_key = require_api_key()
+    youtube = get_youtube_client(api_key=api_key)
+
+    # Get playlist metadata
+    pl_response = youtube.playlists().list(
+        part="snippet,contentDetails,status",
+        id=playlist_id,
+    ).execute()
+
+    # Get playlist items
+    params: dict = {
+        "part": "snippet,contentDetails,status",
+        "playlistId": playlist_id,
+        "maxResults": min(max_results, 50),
+    }
+    if page_token:
+        params["pageToken"] = page_token
+
+    items_response = youtube.playlistItems().list(**params).execute()
+
+    result = {
+        "playlist": pl_response.get("items", [{}])[0] if pl_response.get("items") else {},
+        "items": items_response.get("items", []),
+        "totalResults": items_response.get("pageInfo", {}).get("totalResults"),
+        "nextPageToken": items_response.get("nextPageToken"),
+    }
+    return _format_json(result)
+
+
+@mcp.tool()
+async def youtube_playlist_create(
+    title: str,
+    description: str = "",
+    privacy_status: str = "private",
+    tags: list[str] | None = None,
+) -> str:
+    """Create a new YouTube playlist.
+
+    Args:
+        title: Playlist title
+        description: Playlist description
+        privacy_status: private, public, or unlisted (default: private)
+        tags: Optional list of tags
+
+    Returns:
+        The new playlist ID and confirmation.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    body: dict = {
+        "snippet": {
+            "title": title,
+            "description": description,
+        },
+        "status": {
+            "privacyStatus": privacy_status,
+        },
+    }
+    if tags:
+        body["snippet"]["tags"] = tags
+
+    response = youtube.playlists().insert(part="snippet,status", body=body).execute()
+    playlist_id = response.get("id")
+    return f"Created playlist '{title}' with ID: {playlist_id}"
+
+
+@mcp.tool()
+async def youtube_playlist_delete(playlist_id: str) -> str:
+    """Delete a YouTube playlist.
+
+    Args:
+        playlist_id: The playlist ID to delete
+
+    Returns:
+        Confirmation of deletion.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    youtube.playlists().delete(id=playlist_id).execute()
+    return f"Deleted playlist {playlist_id}."
+
+
+@mcp.tool()
+async def youtube_playlist_add_video(
+    playlist_id: str,
+    video_id: str,
+    position: int | None = None,
+) -> str:
+    """Add a video to a YouTube playlist.
+
+    Args:
+        playlist_id: Target playlist ID
+        video_id: Video ID to add
+        position: Optional position in the playlist (0-based)
+
+    Returns:
+        Confirmation with the playlist item ID.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    body: dict = {
+        "snippet": {
+            "playlistId": playlist_id,
+            "resourceId": {
+                "kind": "youtube#video",
+                "videoId": video_id,
+            },
+        }
+    }
+    if position is not None:
+        body["snippet"]["position"] = position
+
+    response = youtube.playlistItems().insert(part="snippet", body=body).execute()
+    item_id = response.get("id")
+    return f"Added video {video_id} to playlist {playlist_id} (item ID: {item_id})"
+
+
+@mcp.tool()
+async def youtube_playlist_remove_video(playlist_item_id: str) -> str:
+    """Remove a video from a YouTube playlist.
+
+    The playlist_item_id comes from youtube_playlist_details (the item's 'id' field),
+    NOT the video ID.
+
+    Args:
+        playlist_item_id: The playlist item resource ID to remove
+
+    Returns:
+        Confirmation of removal.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    youtube.playlistItems().delete(id=playlist_item_id).execute()
+    return f"Removed playlist item {playlist_item_id}."
+
+
+@mcp.tool()
+async def youtube_my_playlists(
+    max_results: int = 25,
+    page_token: str | None = None,
+) -> str:
+    """List the authenticated user's YouTube playlists.
+
+    Args:
+        max_results: Number of playlists to return (1-50, default 25)
+        page_token: Token for pagination
+
+    Returns:
+        JSON array of playlists with titles, descriptions, item counts, and IDs.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    params: dict = {
+        "part": "snippet,contentDetails,status",
+        "mine": True,
+        "maxResults": min(max_results, 50),
+    }
+    if page_token:
+        params["pageToken"] = page_token
+
+    response = youtube.playlists().list(**params).execute()
+    return _format_json(response)
+
+
+# ─── Group 5: Comment Operations ──────────────────────────────────────────────
+
+
+@mcp.tool()
+async def youtube_comments_list(
+    video_id: str,
+    max_results: int = 20,
+    order: str = "relevance",
+    page_token: str | None = None,
+) -> str:
+    """Get top-level comments on a video.
+
+    Args:
+        video_id: YouTube video ID
+        max_results: Number of comment threads to return (1-100, default 20)
+        order: Sort order — relevance or time
+        page_token: Token for pagination
+
+    Returns:
+        JSON array of comment threads with author, text, likes, and reply counts.
+    """
+    from .clients.youtube import get_youtube_client
+
+    api_key = require_api_key()
+    youtube = get_youtube_client(api_key=api_key)
+
+    params: dict = {
+        "part": "snippet,replies",
+        "videoId": video_id,
+        "maxResults": min(max_results, 100),
+        "order": order,
+        "textFormat": "plainText",
+    }
+    if page_token:
+        params["pageToken"] = page_token
+
+    response = youtube.commentThreads().list(**params).execute()
+    return _format_comment_threads(response)
+
+
+@mcp.tool()
+async def youtube_comment_replies(
+    parent_id: str,
+    max_results: int = 20,
+    page_token: str | None = None,
+) -> str:
+    """Get replies to a specific comment.
+
+    Args:
+        parent_id: The top-level comment ID to get replies for
+        max_results: Number of replies to return (1-100, default 20)
+        page_token: Token for pagination
+
+    Returns:
+        JSON array of reply comments with author, text, and likes.
+    """
+    from .clients.youtube import get_youtube_client
+
+    api_key = require_api_key()
+    youtube = get_youtube_client(api_key=api_key)
+
+    params: dict = {
+        "part": "snippet",
+        "parentId": parent_id,
+        "maxResults": min(max_results, 100),
+        "textFormat": "plainText",
+    }
+    if page_token:
+        params["pageToken"] = page_token
+
+    response = youtube.comments().list(**params).execute()
+    return _format_json(response)
+
+
+@mcp.tool()
+async def youtube_comment_post(
+    video_id: str,
+    text: str,
+) -> str:
+    """Post a top-level comment on a video.
+
+    Args:
+        video_id: YouTube video ID to comment on
+        text: Comment text
+
+    Returns:
+        The new comment ID and confirmation.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    body = {
+        "snippet": {
+            "videoId": video_id,
+            "topLevelComment": {
+                "snippet": {
+                    "textOriginal": text,
+                }
+            },
+        }
+    }
+    response = youtube.commentThreads().insert(part="snippet", body=body).execute()
+    comment_id = response.get("id")
+    return f"Posted comment on video {video_id} (comment ID: {comment_id})"
+
+
+@mcp.tool()
+async def youtube_comment_reply(
+    parent_id: str,
+    text: str,
+) -> str:
+    """Reply to an existing comment.
+
+    Args:
+        parent_id: The comment ID to reply to
+        text: Reply text
+
+    Returns:
+        The new reply comment ID and confirmation.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    body = {
+        "snippet": {
+            "parentId": parent_id,
+            "textOriginal": text,
+        }
+    }
+    response = youtube.comments().insert(part="snippet", body=body).execute()
+    reply_id = response.get("id")
+    return f"Posted reply to comment {parent_id} (reply ID: {reply_id})"
+
+
+@mcp.tool()
+async def youtube_comment_delete(comment_id: str) -> str:
+    """Delete a comment or reply.
+
+    You can only delete comments you own.
+
+    Args:
+        comment_id: The comment ID to delete
+
+    Returns:
+        Confirmation of deletion.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    youtube.comments().delete(id=comment_id).execute()
+    return f"Deleted comment {comment_id}."
+
+
 # ─── Group 8: YouTube Music Search & Browse ─────────────────────────────────
 
 
@@ -519,6 +964,304 @@ async def ytmusic_playlist_delete(playlist_id: str) -> str:
     return f"Deleted playlist {playlist_id}."
 
 
+# ─── Group 9b: YouTube Music Library — Songs, Albums, Artists (OAuth) ──────
+
+
+@mcp.tool()
+async def ytmusic_library_songs(
+    limit: int = 100,
+    order: str | None = None,
+) -> str:
+    """List saved songs in your YouTube Music library.
+
+    Args:
+        limit: Max songs to return (default 100)
+        order: Optional sort — a_to_z, z_to_a, recently_added
+
+    Returns:
+        JSON array of library songs with titles, artists, albums, and durations.
+    """
+    from .clients.ytmusic import get_ytmusic_client
+
+    ytmusic = get_ytmusic_client(require_auth=True)
+    kwargs: dict = {"limit": limit}
+    if order:
+        kwargs["order"] = order
+    return _format_json(ytmusic.get_library_songs(**kwargs))
+
+
+@mcp.tool()
+async def ytmusic_library_albums(
+    limit: int = 100,
+    order: str | None = None,
+) -> str:
+    """List saved albums in your YouTube Music library.
+
+    Args:
+        limit: Max albums to return (default 100)
+        order: Optional sort — a_to_z, z_to_a, recently_added
+
+    Returns:
+        JSON array of library albums with titles, artists, and browse IDs.
+    """
+    from .clients.ytmusic import get_ytmusic_client
+
+    ytmusic = get_ytmusic_client(require_auth=True)
+    kwargs: dict = {"limit": limit}
+    if order:
+        kwargs["order"] = order
+    return _format_json(ytmusic.get_library_albums(**kwargs))
+
+
+@mcp.tool()
+async def ytmusic_library_artists(
+    limit: int = 100,
+    order: str | None = None,
+) -> str:
+    """List followed/subscribed artists in your YouTube Music library.
+
+    Args:
+        limit: Max artists to return (default 100)
+        order: Optional sort — a_to_z, z_to_a, recently_added
+
+    Returns:
+        JSON array of library artists with names and channel IDs.
+    """
+    from .clients.ytmusic import get_ytmusic_client
+
+    ytmusic = get_ytmusic_client(require_auth=True)
+    kwargs: dict = {"limit": limit}
+    if order:
+        kwargs["order"] = order
+    return _format_json(ytmusic.get_library_artists(**kwargs))
+
+
+@mcp.tool()
+async def ytmusic_subscribe_artist(channel_id: str) -> str:
+    """Subscribe to an artist on YouTube Music.
+
+    Args:
+        channel_id: The artist's channel ID
+
+    Returns:
+        Confirmation of subscription.
+    """
+    from .clients.ytmusic import get_ytmusic_client
+
+    ytmusic = get_ytmusic_client(require_auth=True)
+    ytmusic.subscribe_artists([channel_id])
+    return f"Subscribed to artist {channel_id}."
+
+
+@mcp.tool()
+async def ytmusic_unsubscribe_artist(channel_id: str) -> str:
+    """Unsubscribe from an artist on YouTube Music.
+
+    Args:
+        channel_id: The artist's channel ID
+
+    Returns:
+        Confirmation of unsubscription.
+    """
+    from .clients.ytmusic import get_ytmusic_client
+
+    ytmusic = get_ytmusic_client(require_auth=True)
+    ytmusic.unsubscribe_artists([channel_id])
+    return f"Unsubscribed from artist {channel_id}."
+
+
+# ─── Group 10b: YouTube Music Playlist Details & Edit (OAuth) ─────────────────
+
+
+@mcp.tool()
+async def ytmusic_playlist_details(
+    playlist_id: str,
+    limit: int | None = None,
+) -> str:
+    """Get a YouTube Music playlist's tracks and metadata.
+
+    Works without auth for public playlists. Requires auth for private ones.
+
+    Args:
+        playlist_id: YouTube Music playlist ID
+        limit: Max tracks to return (default: all)
+
+    Returns:
+        Playlist metadata with track listing.
+    """
+    from .clients.ytmusic import get_ytmusic_client
+
+    # Try authed client first, fall back to public
+    try:
+        ytmusic = get_ytmusic_client(require_auth=True)
+    except ValueError:
+        ytmusic = get_ytmusic_client(require_auth=False)
+
+    kwargs: dict = {}
+    if limit is not None:
+        kwargs["limit"] = limit
+    return _format_json(ytmusic.get_playlist(playlist_id, **kwargs))
+
+
+@mcp.tool()
+async def ytmusic_playlist_edit(
+    playlist_id: str,
+    title: str | None = None,
+    description: str | None = None,
+    privacy_status: str | None = None,
+) -> str:
+    """Edit a YouTube Music playlist's metadata.
+
+    Args:
+        playlist_id: Playlist ID to edit
+        title: New title (optional)
+        description: New description (optional)
+        privacy_status: New privacy — PRIVATE, PUBLIC, or UNLISTED (optional)
+
+    Returns:
+        Confirmation of the edit.
+    """
+    from .clients.ytmusic import get_ytmusic_client
+
+    ytmusic = get_ytmusic_client(require_auth=True)
+    kwargs: dict = {"playlistId": playlist_id}
+    if title is not None:
+        kwargs["title"] = title
+    if description is not None:
+        kwargs["description"] = description
+    if privacy_status is not None:
+        kwargs["privacyStatus"] = privacy_status
+
+    ytmusic.edit_playlist(**kwargs)
+    return f"Updated playlist {playlist_id}."
+
+
+@mcp.tool()
+async def ytmusic_playlist_remove_items(
+    playlist_id: str,
+    video_ids: list[str],
+) -> str:
+    """Remove songs from a YouTube Music playlist.
+
+    The video_ids should be the setVideoId values from ytmusic_playlist_details,
+    NOT regular video IDs.
+
+    Args:
+        playlist_id: Playlist ID to remove from
+        video_ids: List of setVideoId values to remove
+
+    Returns:
+        Confirmation with number of items removed.
+    """
+    from .clients.ytmusic import get_ytmusic_client
+
+    ytmusic = get_ytmusic_client(require_auth=True)
+    # ytmusicapi expects list of dicts with videoId and setVideoId
+    videos = [{"videoId": vid, "setVideoId": vid} for vid in video_ids]
+    ytmusic.remove_playlist_items(playlist_id, videos)
+    return f"Removed {len(video_ids)} items from playlist {playlist_id}."
+
+
+# ─── Group 8b: YouTube Music Browse — Moods, Radio, Podcasts ──────────────────
+
+
+@mcp.tool()
+async def ytmusic_moods() -> str:
+    """Browse available mood and genre categories on YouTube Music.
+
+    Returns:
+        JSON object of mood/genre categories with their params for fetching playlists.
+    """
+    from .clients.ytmusic import get_ytmusic_client
+
+    ytmusic = get_ytmusic_client()
+    return _format_json(ytmusic.get_mood_categories())
+
+
+@mcp.tool()
+async def ytmusic_mood_playlists(params: str) -> str:
+    """Get playlists for a specific mood or genre category.
+
+    The params value comes from ytmusic_moods response.
+
+    Args:
+        params: The category params string from ytmusic_moods
+
+    Returns:
+        JSON array of playlists for the selected mood/genre.
+    """
+    from .clients.ytmusic import get_ytmusic_client
+
+    ytmusic = get_ytmusic_client()
+    return _format_json(ytmusic.get_mood_playlists(params))
+
+
+@mcp.tool()
+async def ytmusic_get_watch_playlist(
+    video_id: str | None = None,
+    playlist_id: str | None = None,
+    limit: int = 25,
+) -> str:
+    """Get the radio/up-next queue for a song or playlist.
+
+    Provide either video_id or playlist_id. Returns the auto-generated
+    queue with lyrics browse IDs and related tracks.
+
+    Args:
+        video_id: Song video ID to get radio for
+        playlist_id: Playlist ID to get queue for
+        limit: Max tracks in queue (default 25)
+
+    Returns:
+        Watch playlist with tracks, lyrics IDs, and related content.
+    """
+    from .clients.ytmusic import get_ytmusic_client
+
+    ytmusic = get_ytmusic_client()
+    kwargs: dict = {"limit": limit}
+    if video_id:
+        kwargs["videoId"] = video_id
+    if playlist_id:
+        kwargs["playlistId"] = playlist_id
+
+    if not video_id and not playlist_id:
+        raise ValueError("Provide either video_id or playlist_id")
+
+    return _format_json(ytmusic.get_watch_playlist(**kwargs))
+
+
+@mcp.tool()
+async def ytmusic_get_podcast(podcast_id: str) -> str:
+    """Get podcast details and episode listing.
+
+    Args:
+        podcast_id: YouTube Music podcast browse ID
+
+    Returns:
+        Podcast metadata with episode list.
+    """
+    from .clients.ytmusic import get_ytmusic_client
+
+    ytmusic = get_ytmusic_client()
+    return _format_json(ytmusic.get_podcast(podcast_id))
+
+
+@mcp.tool()
+async def ytmusic_get_episode(episode_id: str) -> str:
+    """Get details for a specific podcast episode.
+
+    Args:
+        episode_id: YouTube Music episode video ID
+
+    Returns:
+        Episode metadata with title, description, duration, and podcast info.
+    """
+    from .clients.ytmusic import get_ytmusic_client
+
+    ytmusic = get_ytmusic_client()
+    return _format_json(ytmusic.get_episode(episode_id))
+
+
 # ─── Formatting Helpers ─────────────────────────────────────────────────────
 
 
@@ -600,6 +1343,47 @@ def _format_channel_results(response: dict) -> str:
         }
         results.append(result)
     return json.dumps(results, indent=2)
+
+
+def _format_comment_threads(response: dict) -> str:
+    """Format YouTube comment threads into a concise summary."""
+    import json
+
+    items = response.get("items", [])
+    results = []
+    for item in items:
+        top_comment = item.get("snippet", {}).get("topLevelComment", {})
+        snippet = top_comment.get("snippet", {})
+        result = {
+            "id": top_comment.get("id"),
+            "author": snippet.get("authorDisplayName"),
+            "text": snippet.get("textDisplay"),
+            "likes": snippet.get("likeCount"),
+            "published": snippet.get("publishedAt"),
+            "updated": snippet.get("updatedAt"),
+            "reply_count": item.get("snippet", {}).get("totalReplyCount", 0),
+        }
+        # Include first few replies if present
+        replies = item.get("replies", {}).get("comments", [])
+        if replies:
+            result["replies"] = [
+                {
+                    "id": r.get("id"),
+                    "author": r.get("snippet", {}).get("authorDisplayName"),
+                    "text": r.get("snippet", {}).get("textDisplay"),
+                    "likes": r.get("snippet", {}).get("likeCount"),
+                    "published": r.get("snippet", {}).get("publishedAt"),
+                }
+                for r in replies[:5]
+            ]
+        results.append(result)
+
+    output = {
+        "comments": results,
+        "nextPageToken": response.get("nextPageToken"),
+        "totalResults": response.get("pageInfo", {}).get("totalResults"),
+    }
+    return json.dumps(output, indent=2)
 
 
 def _format_ytmusic_results(results: list) -> str:
