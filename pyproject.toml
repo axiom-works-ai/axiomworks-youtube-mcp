@@ -1,0 +1,69 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "axiomworks-youtube-mcp"
+version = "0.1.0"
+description = "The definitive YouTube + YouTube Music MCP server — 68 tools for search, playlists, comments, analytics, live streaming, and full YouTube Music library management."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Axiom Works AI", email = "dev@axiomworks.ai" },
+]
+keywords = ["mcp", "youtube", "youtube-music", "claude", "ai", "model-context-protocol"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Multimedia :: Sound/Audio",
+]
+
+dependencies = [
+    "mcp>=1.0.0",
+    "google-api-python-client>=2.100.0",
+    "google-auth-oauthlib>=1.0.0",
+    "google-auth-httplib2>=0.2.0",
+    "ytmusicapi>=1.7.0",
+    "yt-dlp>=2024.1.0",
+    "click>=8.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[project.urls]
+Homepage = "https://github.com/axiomworks-ai/axiomworks-youtube-mcp"
+Documentation = "https://github.com/axiomworks-ai/axiomworks-youtube-mcp#readme"
+Repository = "https://github.com/axiomworks-ai/axiomworks-youtube-mcp"
+Issues = "https://github.com/axiomworks-ai/axiomworks-youtube-mcp/issues"
+
+[project.scripts]
+axiomworks-youtube-mcp = "axiomworks_youtube_mcp.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/axiomworks_youtube_mcp"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
