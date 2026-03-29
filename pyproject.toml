@@ -7,7 +7,7 @@ name = "axiomworks-youtube-mcp"
 version = "0.1.0"
 description = "The definitive YouTube + YouTube Music MCP server — 68 tools for search, playlists, comments, analytics, live streaming, and full YouTube Music library management."
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.10"
 authors = [
     { name = "Axiom Works AI", email = "dev@axiomworks.ai" },
@@ -16,7 +16,7 @@ keywords = ["mcp", "youtube", "youtube-music", "claude", "ai", "model-context-pr
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",

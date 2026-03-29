@@ -1,0 +1,10 @@
+Axiom Works YouTube + YouTube Music MCP Server
+Copyright 2026 Axiom Works AI (https://axiomworks.ai)
+
+This product includes software developed at Axiom Works AI.
+
+This project uses the following third-party libraries:
+- ytmusicapi (MIT License) — https://github.com/sigma67/ytmusicapi
+- google-api-python-client (Apache 2.0) — https://github.com/googleapis/google-api-python-client
+- mcp (MIT License) — https://github.com/modelcontextprotocol/python-sdk
+- yt-dlp (Unlicense) — https://github.com/yt-dlp/yt-dlp
