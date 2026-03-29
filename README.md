@@ -70,10 +70,19 @@ axiomworks-youtube-mcp setup
 
 ### Setting Up OAuth (Tier 2)
 
+**YouTube OAuth** (likes, comments, uploads, analytics):
+
 1. In Google Cloud Console, create **OAuth 2.0 Client ID** (Desktop application)
-2. Download the client secrets JSON file
-3. Place it at `~/.config/axiomworks-youtube-mcp/client_secrets.json`
-4. Run `axiomworks-youtube-mcp setup` and follow the OAuth flow
+2. Configure the OAuth consent screen (External, Testing mode, add your email as test user)
+3. Download the client secrets JSON file
+4. Place it at `~/.config/axiomworks-youtube-mcp/client_secrets.json`
+5. Run `axiomworks-youtube-mcp setup` and follow the OAuth flow
+
+**YouTube Music OAuth** (library, history, playlists):
+
+1. Create a **second** OAuth client — type: **TVs and Limited Input devices**
+2. Download the JSON and place it at `~/.config/axiomworks-youtube-mcp/client_secrets_tv.json`
+3. Run `axiomworks-youtube-mcp setup` — Step 3 will use the TV client for YouTube Music's device code flow
 
 ## Tools (68 total)
 
