@@ -1391,3 +1391,741 @@ def _format_ytmusic_results(results: list) -> str:
     import json
 
     return json.dumps(results[:20], indent=2, default=str)
+
+def _format_analytics_response(response: dict) -> str:
+    """Format YouTube Analytics API response."""
+    import json
+
+    result = {
+        "columnHeaders": response.get("columnHeaders", []),
+        "rows": response.get("rows", []),
+    }
+    return json.dumps(result, indent=2, default=str)
+
+
+# ─── Group 1 Addition: Video Categories (API key) ───────────────────────────
+
+
+@mcp.tool()
+async def youtube_categories(
+    region_code: str = "US",
+) -> str:
+    """List video categories available for a region.
+
+    Args:
+        region_code: ISO 3166-1 alpha-2 country code (default: US)
+
+    Returns:
+        JSON array of video categories with IDs and titles.
+    """
+    from .clients.youtube import get_youtube_client
+
+    api_key = require_api_key()
+    youtube = get_youtube_client(api_key=api_key)
+
+    response = (
+        youtube.videoCategories()
+        .list(part="snippet", regionCode=region_code)
+        .execute()
+    )
+    return _format_json(response)
+
+
+# ─── Group 2 Additions: Video Operations (OAuth) ────────────────────────────
+
+
+@mcp.tool()
+async def youtube_video_rate(
+    video_id: str,
+    rating: str = "like",
+) -> str:
+    """Like, dislike, or remove rating on a YouTube video.
+
+    Args:
+        video_id: YouTube video ID
+        rating: Rating action — like, dislike, or none (removes rating)
+
+    Returns:
+        Confirmation of the rating action.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    youtube.videos().rate(id=video_id, rating=rating).execute()
+    return f"Rated video {video_id} as '{rating}'."
+
+
+@mcp.tool()
+async def youtube_video_get_rating(
+    video_ids: str,
+) -> str:
+    """Get the authenticated user's rating on one or more videos.
+
+    Args:
+        video_ids: Comma-separated video IDs
+
+    Returns:
+        JSON with rating info for each video (like/dislike/none/unspecified).
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    response = youtube.videos().getRating(id=video_ids).execute()
+    return _format_json(response)
+
+
+@mcp.tool()
+async def youtube_video_upload(
+    file_path: str,
+    title: str,
+    description: str = "",
+    tags: list[str] | None = None,
+    category_id: str = "22",
+    privacy_status: str = "private",
+) -> str:
+    """Upload a video to YouTube.
+
+    Args:
+        file_path: Local path to the video file
+        title: Video title
+        description: Video description
+        tags: Optional list of tags
+        category_id: Video category ID (default: 22 = People & Blogs)
+        privacy_status: private, public, or unlisted (default: private)
+
+    Returns:
+        The new video ID and confirmation.
+    """
+    from googleapiclient.http import MediaFileUpload
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    body: dict = {
+        "snippet": {
+            "title": title,
+            "description": description,
+            "categoryId": category_id,
+        },
+        "status": {
+            "privacyStatus": privacy_status,
+        },
+    }
+    if tags:
+        body["snippet"]["tags"] = tags
+
+    media = MediaFileUpload(file_path, resumable=True)
+    request = youtube.videos().insert(
+        part="snippet,status",
+        body=body,
+        media_body=media,
+    )
+
+    response = None
+    while response is None:
+        _, response = request.next_chunk()
+
+    video_id = response.get("id")
+    return f"Uploaded video '{title}' with ID: {video_id}"
+
+
+@mcp.tool()
+async def youtube_video_update(
+    video_id: str,
+    title: str | None = None,
+    description: str | None = None,
+    tags: list[str] | None = None,
+    category_id: str | None = None,
+    privacy_status: str | None = None,
+) -> str:
+    """Update metadata for an existing YouTube video.
+
+    Args:
+        video_id: YouTube video ID to update
+        title: New title (optional)
+        description: New description (optional)
+        tags: New tags list (optional)
+        category_id: New category ID (optional)
+        privacy_status: New privacy — private, public, or unlisted (optional)
+
+    Returns:
+        Confirmation of the update.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    # Fetch current video data to merge with updates
+    current = (
+        youtube.videos()
+        .list(part="snippet,status", id=video_id)
+        .execute()
+    )
+    if not current.get("items"):
+        raise ValueError(f"Video {video_id} not found.")
+
+    item = current["items"][0]
+    snippet = item.get("snippet", {})
+    status = item.get("status", {})
+
+    body: dict = {
+        "id": video_id,
+        "snippet": {
+            "title": title if title is not None else snippet.get("title"),
+            "description": description if description is not None else snippet.get("description", ""),
+            "categoryId": category_id if category_id is not None else snippet.get("categoryId"),
+            "tags": tags if tags is not None else snippet.get("tags", []),
+        },
+        "status": {
+            "privacyStatus": privacy_status if privacy_status is not None else status.get("privacyStatus"),
+        },
+    }
+
+    youtube.videos().update(part="snippet,status", body=body).execute()
+    return f"Updated video {video_id}."
+
+
+@mcp.tool()
+async def youtube_video_delete(video_id: str) -> str:
+    """Delete a YouTube video.
+
+    You can only delete videos you own.
+
+    Args:
+        video_id: YouTube video ID to delete
+
+    Returns:
+        Confirmation of deletion.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    youtube.videos().delete(id=video_id).execute()
+    return f"Deleted video {video_id}."
+
+
+@mcp.tool()
+async def youtube_thumbnail_set(
+    video_id: str,
+    file_path: str,
+) -> str:
+    """Upload a custom thumbnail for a video.
+
+    Args:
+        video_id: YouTube video ID
+        file_path: Local path to the thumbnail image (JPEG, PNG, GIF, BMP)
+
+    Returns:
+        Confirmation with thumbnail URL.
+    """
+    from googleapiclient.http import MediaFileUpload
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    media = MediaFileUpload(file_path, mimetype="image/jpeg")
+    response = youtube.thumbnails().set(
+        videoId=video_id,
+        media_body=media,
+    ).execute()
+
+    url = response.get("items", [{}])[0].get("default", {}).get("url", "")
+    return f"Set thumbnail for video {video_id}. URL: {url}"
+
+
+# ─── Group 3 Additions: Channel Operations (API key) ────────────────────────
+
+
+@mcp.tool()
+async def youtube_channel_videos(
+    channel_id: str,
+    max_results: int = 10,
+    order: str = "date",
+    published_after: str | None = None,
+) -> str:
+    """List videos from a specific channel.
+
+    Args:
+        channel_id: YouTube channel ID
+        max_results: Number of results (1-50, default 10)
+        order: Sort order — date, rating, viewCount, relevance, title
+        published_after: ISO 8601 date filter (e.g., 2026-01-01T00:00:00Z)
+
+    Returns:
+        JSON array of videos from the channel.
+    """
+    from .clients.youtube import get_youtube_client
+
+    api_key = require_api_key()
+    youtube = get_youtube_client(api_key=api_key)
+
+    params: dict = {
+        "part": "snippet",
+        "channelId": channel_id,
+        "type": "video",
+        "maxResults": min(max_results, 50),
+        "order": order,
+    }
+    if published_after:
+        params["publishedAfter"] = published_after
+
+    response = youtube.search().list(**params).execute()
+    return _format_search_results(response)
+
+
+@mcp.tool()
+async def youtube_channel_sections(
+    channel_id: str,
+) -> str:
+    """Get the sections displayed on a channel's page.
+
+    Args:
+        channel_id: YouTube channel ID
+
+    Returns:
+        JSON array of channel sections with types and content.
+    """
+    from .clients.youtube import get_youtube_client
+
+    api_key = require_api_key()
+    youtube = get_youtube_client(api_key=api_key)
+
+    response = (
+        youtube.channelSections()
+        .list(part="snippet,contentDetails", channelId=channel_id)
+        .execute()
+    )
+    return _format_json(response)
+
+
+# ─── Group 4 Addition: Playlist Update (OAuth) ──────────────────────────────
+
+
+@mcp.tool()
+async def youtube_playlist_update(
+    playlist_id: str,
+    title: str | None = None,
+    description: str | None = None,
+    privacy_status: str | None = None,
+) -> str:
+    """Update metadata for an existing YouTube playlist.
+
+    Args:
+        playlist_id: Playlist ID to update
+        title: New title (optional)
+        description: New description (optional)
+        privacy_status: New privacy — private, public, or unlisted (optional)
+
+    Returns:
+        Confirmation of the update.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    # Fetch current playlist data to merge with updates
+    current = (
+        youtube.playlists()
+        .list(part="snippet,status", id=playlist_id)
+        .execute()
+    )
+    if not current.get("items"):
+        raise ValueError(f"Playlist {playlist_id} not found.")
+
+    item = current["items"][0]
+    snippet = item.get("snippet", {})
+    status = item.get("status", {})
+
+    body: dict = {
+        "id": playlist_id,
+        "snippet": {
+            "title": title if title is not None else snippet.get("title"),
+            "description": description if description is not None else snippet.get("description", ""),
+        },
+        "status": {
+            "privacyStatus": privacy_status if privacy_status is not None else status.get("privacyStatus"),
+        },
+    }
+
+    youtube.playlists().update(part="snippet,status", body=body).execute()
+    return f"Updated playlist {playlist_id}."
+
+
+# ─── Group 5 Additions: Comment Operations (OAuth) ──────────────────────────
+
+
+@mcp.tool()
+async def youtube_comment_update(
+    comment_id: str,
+    text: str,
+) -> str:
+    """Edit an existing comment.
+
+    You can only edit comments you own.
+
+    Args:
+        comment_id: The comment ID to edit
+        text: New comment text
+
+    Returns:
+        Confirmation of the update.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    body = {
+        "id": comment_id,
+        "snippet": {
+            "textOriginal": text,
+        },
+    }
+    youtube.comments().update(part="snippet", body=body).execute()
+    return f"Updated comment {comment_id}."
+
+
+@mcp.tool()
+async def youtube_comment_moderate(
+    comment_ids: str,
+    moderation_status: str,
+    ban_author: bool = False,
+) -> str:
+    """Set the moderation status of one or more comments.
+
+    Args:
+        comment_ids: Comma-separated comment IDs
+        moderation_status: heldForReview, published, or rejected
+        ban_author: If True, also bans the comment author (default: False)
+
+    Returns:
+        Confirmation of the moderation action.
+    """
+    from .clients.youtube import get_youtube_client
+
+    creds = require_oauth()
+    youtube = get_youtube_client(credentials=creds)
+
+    youtube.comments().setModerationStatus(
+        id=comment_ids,
+        moderationStatus=moderation_status,
+        banAuthor=ban_author,
+    ).execute()
+    return f"Set moderation status to '{moderation_status}' for comment(s): {comment_ids}"
+
+
+# ─── Group 6: YouTube Analytics (OAuth required) ────────────────────────────
+
+
+@mcp.tool()
+async def youtube_analytics_query(
+    start_date: str,
+    end_date: str,
+    metrics: str,
+    dimensions: str | None = None,
+    filters: str | None = None,
+    sort: str | None = None,
+    max_results: int = 200,
+) -> str:
+    """Run a flexible YouTube Analytics query.
+
+    Args:
+        start_date: Start date (YYYY-MM-DD)
+        end_date: End date (YYYY-MM-DD)
+        metrics: Comma-separated metrics (e.g., views,estimatedMinutesWatched,likes)
+        dimensions: Comma-separated dimensions (e.g., day, video, country)
+        filters: Filter expression (e.g., video==VIDEO_ID;country==US)
+        sort: Sort order (e.g., -views for descending)
+        max_results: Max rows to return (default 200)
+
+    Returns:
+        Analytics data with column headers and rows.
+    """
+    from .clients.analytics import get_analytics_client
+
+    creds = require_oauth()
+    analytics = get_analytics_client(credentials=creds)
+
+    params: dict = {
+        "ids": "channel==MINE",
+        "startDate": start_date,
+        "endDate": end_date,
+        "metrics": metrics,
+        "maxResults": max_results,
+    }
+    if dimensions:
+        params["dimensions"] = dimensions
+    if filters:
+        params["filters"] = filters
+    if sort:
+        params["sort"] = sort
+
+    response = analytics.reports().query(**params).execute()
+    return _format_analytics_response(response)
+
+
+@mcp.tool()
+async def youtube_analytics_video(
+    video_id: str,
+    start_date: str,
+    end_date: str,
+    metrics: str = "views,estimatedMinutesWatched,likes,comments",
+) -> str:
+    """Get analytics for a specific video.
+
+    Args:
+        video_id: YouTube video ID
+        start_date: Start date (YYYY-MM-DD)
+        end_date: End date (YYYY-MM-DD)
+        metrics: Comma-separated metrics (default: views,estimatedMinutesWatched,likes,comments)
+
+    Returns:
+        Video analytics data with the requested metrics.
+    """
+    from .clients.analytics import get_analytics_client
+
+    creds = require_oauth()
+    analytics = get_analytics_client(credentials=creds)
+
+    response = analytics.reports().query(
+        ids="channel==MINE",
+        startDate=start_date,
+        endDate=end_date,
+        metrics=metrics,
+        filters=f"video=={video_id}",
+    ).execute()
+    return _format_analytics_response(response)
+
+
+@mcp.tool()
+async def youtube_analytics_top_videos(
+    metric: str = "views",
+    start_date: str = "",
+    end_date: str = "",
+    max_results: int = 10,
+) -> str:
+    """Get top videos ranked by a specific metric.
+
+    Args:
+        metric: Metric to rank by — views, estimatedMinutesWatched, or likes
+        start_date: Start date (YYYY-MM-DD)
+        end_date: End date (YYYY-MM-DD)
+        max_results: Number of top videos to return (default 10)
+
+    Returns:
+        Top videos ranked by the specified metric.
+    """
+    from .clients.analytics import get_analytics_client
+
+    creds = require_oauth()
+    analytics = get_analytics_client(credentials=creds)
+
+    response = analytics.reports().query(
+        ids="channel==MINE",
+        startDate=start_date,
+        endDate=end_date,
+        metrics=metric,
+        dimensions="video",
+        sort=f"-{metric}",
+        maxResults=max_results,
+    ).execute()
+    return _format_analytics_response(response)
+
+
+@mcp.tool()
+async def youtube_analytics_demographics(
+    start_date: str,
+    end_date: str,
+    dimension: str = "ageGroup",
+) -> str:
+    """Get audience demographics data.
+
+    Args:
+        start_date: Start date (YYYY-MM-DD)
+        end_date: End date (YYYY-MM-DD)
+        dimension: Demographic dimension — ageGroup, gender, or country
+
+    Returns:
+        Viewer demographics breakdown by the specified dimension.
+    """
+    from .clients.analytics import get_analytics_client
+
+    creds = require_oauth()
+    analytics = get_analytics_client(credentials=creds)
+
+    response = analytics.reports().query(
+        ids="channel==MINE",
+        startDate=start_date,
+        endDate=end_date,
+        metrics="viewerPercentage",
+        dimensions=dimension,
+        sort=f"-viewerPercentage",
+    ).execute()
+    return _format_analytics_response(response)
+
+
+@mcp.tool()
+async def youtube_analytics_revenue(
+    start_date: str,
+    end_date: str,
+    dimensions: str | None = None,
+) -> str:
+    """Get revenue metrics for the channel.
+
+    Requires the yt-analytics-monetary.readonly scope.
+
+    Args:
+        start_date: Start date (YYYY-MM-DD)
+        end_date: End date (YYYY-MM-DD)
+        dimensions: Optional dimensions (e.g., day, video, country)
+
+    Returns:
+        Revenue data including estimated revenue and ad metrics.
+    """
+    from .clients.analytics import get_analytics_client
+
+    creds = require_oauth()
+    analytics = get_analytics_client(credentials=creds)
+
+    params: dict = {
+        "ids": "channel==MINE",
+        "startDate": start_date,
+        "endDate": end_date,
+        "metrics": "estimatedRevenue,estimatedAdRevenue,grossRevenue,estimatedRedPartnerRevenue",
+    }
+    if dimensions:
+        params["dimensions"] = dimensions
+        params["sort"] = f"-estimatedRevenue"
+
+    response = analytics.reports().query(**params).execute()
+    return _format_analytics_response(response)
+
+
+# ─── Group 7: Live Streaming (OAuth required) ───────────────────────────────
+
+
+@mcp.tool()
+async def youtube_live_broadcasts(
+    broadcast_status: str = "all",
+    max_results: int = 10,
+) -> str:
+    """List live broadcasts for the authenticated user.
+
+    Args:
+        broadcast_status: Filter — upcoming, active, completed, or all (default: all)
+        max_results: Number of broadcasts to return (1-50, default 10)
+
+    Returns:
+        JSON array of live broadcasts with status, scheduled times, and details.
+    """
+    from .clients.live import get_live_client
+
+    creds = require_oauth()
+    youtube = get_live_client(credentials=creds)
+
+    response = (
+        youtube.liveBroadcasts()
+        .list(
+            part="snippet,contentDetails,status",
+            broadcastStatus=broadcast_status,
+            maxResults=min(max_results, 50),
+        )
+        .execute()
+    )
+    return _format_json(response)
+
+
+@mcp.tool()
+async def youtube_live_chat_messages(
+    live_chat_id: str,
+    max_results: int = 200,
+) -> str:
+    """Read messages from a live chat.
+
+    The live_chat_id comes from a broadcast's snippet.liveChatId field.
+
+    Args:
+        live_chat_id: The live chat ID from the broadcast
+        max_results: Number of messages to return (default 200)
+
+    Returns:
+        JSON array of chat messages with authors, text, and timestamps.
+    """
+    from .clients.live import get_live_client
+
+    creds = require_oauth()
+    youtube = get_live_client(credentials=creds)
+
+    response = (
+        youtube.liveChatMessages()
+        .list(
+            liveChatId=live_chat_id,
+            part="snippet,authorDetails",
+            maxResults=min(max_results, 2000),
+        )
+        .execute()
+    )
+    return _format_json(response)
+
+
+@mcp.tool()
+async def youtube_live_chat_send(
+    live_chat_id: str,
+    message_text: str,
+) -> str:
+    """Send a message to a live chat.
+
+    Args:
+        live_chat_id: The live chat ID from the broadcast
+        message_text: Text content of the message
+
+    Returns:
+        Confirmation with the message ID.
+    """
+    from .clients.live import get_live_client
+
+    creds = require_oauth()
+    youtube = get_live_client(credentials=creds)
+
+    body = {
+        "snippet": {
+            "liveChatId": live_chat_id,
+            "type": "textMessageEvent",
+            "textMessageDetails": {
+                "messageText": message_text,
+            },
+        }
+    }
+    response = youtube.liveChatMessages().insert(part="snippet", body=body).execute()
+    msg_id = response.get("id")
+    return f"Sent message to live chat {live_chat_id} (message ID: {msg_id})"
+
+
+# ─── Group 11 Addition: YouTube Music Channel/Podcast ────────────────────────
+
+
+@mcp.tool()
+async def ytmusic_get_channel(channel_id: str) -> str:
+    """Get a podcast channel page on YouTube Music.
+
+    Args:
+        channel_id: YouTube Music channel ID
+
+    Returns:
+        Channel page data with shows, episodes, and metadata.
+    """
+    from .clients.ytmusic import get_ytmusic_client
+
+    ytmusic = get_ytmusic_client()
+    return _format_json(ytmusic.get_channel(channel_id))
+
