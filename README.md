@@ -6,6 +6,9 @@ No other YouTube MCP server covers analytics, live streaming, comments (write), 
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/axiom-works-ai/axiomworks-youtube-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/axiom-works-ai/axiomworks-youtube-mcp/actions)
+[![MCP](https://img.shields.io/badge/MCP-compatible-green.svg)](https://modelcontextprotocol.io)
+[![Tools](https://img.shields.io/badge/tools-68-brightgreen.svg)](docs/USER_GUIDE.md)
 
 ## Quick Start
 
@@ -288,9 +291,16 @@ src/axiomworks_youtube_mcp/
 
 Copyright 2026 [Axiom Works AI](https://axiomworks.ai)
 
+## Documentation
+
+- [**User Guide**](docs/USER_GUIDE.md) — Use cases, creative examples, tips
+- [**API Gaps**](API_GAPS.md) — YouTube API limitations and upstream feedback
+- [**Upstream Contributions**](UPSTREAM_CONTRIBUTIONS.md) — ytmusicapi PR targets
+- [**Changelog**](CHANGELOG.md) — Version history
+
 ## Contributing
 
-Contributions are welcome! Please see our contributing guidelines (coming soon).
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 Areas where help is especially valued:
 - Additional YouTube Music features via [ytmusicapi](https://github.com/sigma67/ytmusicapi) upstream contributions
