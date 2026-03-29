@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "axiomworks-youtube-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "The definitive YouTube + YouTube Music MCP server — 68 tools for search, playlists, comments, analytics, live streaming, and full YouTube Music library management."
 readme = "README.md"
 license = "Apache-2.0"
