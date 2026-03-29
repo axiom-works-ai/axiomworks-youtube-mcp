@@ -16,8 +16,7 @@ logger = logging.getLogger(__name__)
 # Create the MCP server instance
 mcp = FastMCP(
     "axiomworks-youtube-mcp",
-    version="0.1.0",
-    description=(
+    instructions=(
         "The definitive YouTube + YouTube Music MCP server by Axiom Works. "
         "68 tools for search, playlists, comments, analytics, live streaming, "
         "and full YouTube Music library management."
