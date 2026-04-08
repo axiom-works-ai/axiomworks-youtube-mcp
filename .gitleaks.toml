@@ -1,0 +1,96 @@
+title = "GreyMatter Security Rules"
+
+# Extend gitleaks default rules (API keys, tokens, etc.)
+# These custom rules catch internal infrastructure and product leaks.
+
+# --- Tailscale CGNAT IPs (100.64.0.0/10) ---
+[[rules]]
+id = "tailscale-cgnat-ip"
+description = "Hardcoded Tailscale/CGNAT IP address (100.64-127.x.x)"
+regex = '''100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}'''
+keywords = ["100."]
+tags = ["infrastructure", "ip-address"]
+
+# --- Private LAN IPs (192.168.x.x) in non-test source files ---
+[[rules]]
+id = "private-lan-ip"
+description = "Hardcoded private LAN IP (192.168.x.x) — use environment variables or config"
+regex = '''192\.168\.[0-9]{1,3}\.[0-9]{1,3}'''
+keywords = ["192.168"]
+tags = ["infrastructure", "ip-address"]
+[rules.allowlist]
+paths = ['''test.*\.py$''', '''.*_test\.py$''', '''.*\.test\.(ts|js)$''']
+
+# --- HMAC / License secrets ---
+[[rules]]
+id = "greymatter-hmac-secret"
+description = "Hardcoded GreyMatter license/HMAC secret"
+regex = '''(GM_LICENSE_SECRET|HMAC_SECRET)\s*=\s*["'][^"']{8,}["']'''
+keywords = ["HMAC_SECRET", "GM_LICENSE_SECRET"]
+tags = ["secret"]
+
+# --- Internal SSH access patterns ---
+[[rules]]
+id = "internal-ssh-command"
+description = "SSH command with internal hostname or user"
+regex = '''ssh\s+agenticai@'''
+keywords = ["agenticai@"]
+tags = ["infrastructure", "credential"]
+
+# --- Anthropic API keys (beyond gitleaks defaults) ---
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API key"
+regex = '''sk-ant-[a-zA-Z0-9_-]{20,}'''
+keywords = ["sk-ant-"]
+tags = ["secret", "api-key"]
+
+# --- Internal product names (from .security-blocklist.txt) ---
+# NOTE: The blocklist grep in CI is the primary enforcement.
+# These rules provide pre-commit coverage for the most critical terms.
+[[rules]]
+id = "internal-product-salesos"
+description = "Internal product name: SalesOS"
+regex = '''SalesOS'''
+keywords = ["SalesOS"]
+tags = ["internal-product"]
+[rules.allowlist]
+paths = ['''.gitleaks.toml$''', '''.security-blocklist.txt$''']
+
+[[rules]]
+id = "internal-product-neuralfabric"
+description = "Internal product name: NeuralFabric"
+regex = '''NeuralFabric'''
+keywords = ["NeuralFabric"]
+tags = ["internal-product"]
+[rules.allowlist]
+paths = ['''.gitleaks.toml$''', '''.security-blocklist.txt$''']
+
+[[rules]]
+id = "internal-product-securellm"
+description = "Internal product name: SecureLLM"
+regex = '''SecureLLM'''
+keywords = ["SecureLLM"]
+tags = ["internal-product"]
+[rules.allowlist]
+paths = ['''.gitleaks.toml$''', '''.security-blocklist.txt$''']
+
+[[rules]]
+id = "internal-username"
+description = "Private GitHub username"
+regex = '''hb69dpsgw4'''
+keywords = ["hb69dpsgw4"]
+tags = ["personal"]
+[rules.allowlist]
+paths = ['''.gitleaks.toml$''', '''.security-blocklist.txt$''']
+
+# --- Global allowlist ---
+[allowlist]
+paths = [
+    '''.gitleaks\.toml$''',
+    '''.security-blocklist\.txt$''',
+    '''\.git/''',
+    '''\.github/workflows/security.*''',
+    '''tests/.*test.*\.(go|py)$''',
+    '''.*_test\.(go|py)$''',
+]

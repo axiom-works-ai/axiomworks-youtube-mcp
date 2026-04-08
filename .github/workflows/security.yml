@@ -1,0 +1,97 @@
+# Security scanning workflow — blocks PR merge on findings.
+# Three jobs: gitleaks scan, blocklist grep, data classification check.
+# All must pass for the "Security Scan" status check to succeed.
+
+name: Security Scan
+
+on:
+  pull_request:
+    branches: ['**']
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  gitleaks:
+    name: Gitleaks Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar xz
+          sudo mv gitleaks /usr/local/bin/
+      - name: Run gitleaks
+        run: gitleaks detect --config .gitleaks.toml --no-git -v
+
+  blocklist:
+    name: Blocklist Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan for blocklisted terms
+        run: |
+          if [ ! -f .security-blocklist.txt ]; then exit 0; fi
+          FAILED=0
+          while IFS= read -r term || [ -n "$term" ]; do
+            [[ "$term" =~ ^#.*$ || -z "$term" ]] && continue
+            term=$(echo "$term" | xargs)
+            [ -z "$term" ] && continue
+            FINDINGS=$(grep -rn --include='*.py' --include='*.go' --include='*.js' \
+              --include='*.ts' --include='*.md' --include='*.toml' --include='*.json' \
+              --include='*.yaml' --include='*.yml' --include='*.sh' --include='*.html' \
+              --exclude-dir='.git' --exclude-dir='node_modules' --exclude-dir='.venv' \
+              --exclude=".security-blocklist.txt" --exclude=".gitleaks.toml" --exclude-dir=".github" \
+              "$term" . 2>/dev/null || true)
+            if [ -n "$FINDINGS" ]; then
+              echo "::error::Blocklisted term '$term' found:"
+              echo "$FINDINGS"
+              FAILED=1
+            fi
+          done < .security-blocklist.txt
+          if [ "$FAILED" -eq 1 ]; then exit 1; fi
+          echo "No blocklisted terms found."
+
+  classification:
+    name: Data Classification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check data classification
+        run: |
+          if [ ! -f .dataclass ]; then exit 0; fi
+          CLASS=$(cat .dataclass | head -1 | xargs)
+          if [ "$CLASS" = "PUBLIC" ]; then
+            # Check for internal-only patterns (exclude .github/ to avoid self-reference)
+            FAILED=0
+            for p in "agenticai@" "/Users/keithcotterman/" "/Users/agenticai/"; do
+              F=$(grep -rn --include='*.py' --include='*.md' --include='*.sh' \
+                --exclude-dir='.git' --exclude-dir='.venv' --exclude-dir='.github' \
+                "$p" . 2>/dev/null || true)
+              if [ -n "$F" ]; then echo "::error::Internal pattern found:" && echo "$F" && FAILED=1; fi
+            done
+            if [ "$FAILED" -eq 1 ]; then exit 1; fi
+            echo "No internal content in PUBLIC repo."
+          fi
+
+  notify:
+    name: Notify on Findings
+    runs-on: ubuntu-latest
+    needs: [gitleaks, blocklist, classification]
+    if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '[Security] Sensitive data detected on main branch',
+              body: `Security scan found issues on push to main.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              labels: ['security']
+            });

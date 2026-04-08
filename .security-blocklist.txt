@@ -1,0 +1,20 @@
+# Security Blocklist — Internal terms that must not appear in public repos
+# One term per line. Case-sensitive. Used by CI scan and pre-commit hooks.
+# Update this file when new internal products or infrastructure are created.
+#
+# Product names
+SalesOS
+NeuralFabric
+NeuralPulse
+SecureLLM
+Morpheus
+Kairo
+FieldNotes
+#
+# Infrastructure
+hb69dpsgw4
+agenticai@
+Extreme Networks
+#
+# Personal
+keith@axiomworks.dev
