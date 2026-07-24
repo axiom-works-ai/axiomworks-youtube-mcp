@@ -61,58 +61,63 @@ def get_youtube_client(
 async def get_transcript_via_ytdlp(video_id: str, language: str = "en") -> str | None:
     """Extract transcript using yt-dlp (no auth needed).
 
-    This is the primary transcript method — works for most videos
-    without any API key or OAuth setup.
+    Downloads the actual subtitle file to a temp directory and extracts
+    text — works for most videos without any API key or OAuth setup.
     """
+    import tempfile
+    import os
+    import shutil
+
+    # Find yt-dlp binary (may not be in PATH when running via uvx/venv)
+    yt_dlp = shutil.which("yt-dlp")
+    if not yt_dlp:
+        # Try common locations
+        import sys
+        for prefix in [sys.prefix, os.path.dirname(sys.executable)]:
+            candidate = os.path.join(prefix, "bin", "yt-dlp")
+            if not os.path.isabs(prefix):
+                candidate = os.path.join(os.path.dirname(sys.executable), "yt-dlp")
+            if os.path.exists(candidate):
+                yt_dlp = candidate
+                break
+    if not yt_dlp:
+        yt_dlp = "yt-dlp"  # last resort
+
+
     url = f"https://www.youtube.com/watch?v={video_id}"
 
     try:
-        result = await asyncio.to_thread(
-            subprocess.run,
-            [
-                "yt-dlp",
-                "--skip-download",
-                "--write-subs",
-                "--write-auto-subs",
-                "--sub-lang", language,
-                "--sub-format", "json3",
-                "--output", "-",
-                "--print", "%(subtitles)j",
-                url,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            outfile = os.path.join(tmpdir, "sub")
+            result = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    yt_dlp,
+                    "--skip-download",
+                    "--write-subs",
+                    "--write-auto-subs",
+                    "--sub-lang", language,
+                    "--sub-format", "json3",
+                    "--no-warnings",
+                    "-o", outfile,
+                    url,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
 
-        if result.returncode == 0 and result.stdout.strip():
-            # Try to parse subtitle data
-            try:
-                subs_data = json.loads(result.stdout)
-                # Extract text from subtitle format
-                if isinstance(subs_data, dict):
-                    for lang_key, tracks in subs_data.items():
-                        if isinstance(tracks, list) and tracks:
-                            # Use first available track
-                            track = tracks[0]
-                            if "url" in track:
-                                # Download the actual subtitle file
-                                sub_result = await asyncio.to_thread(
-                                    subprocess.run,
-                                    ["yt-dlp", "--no-download", url,
-                                     "--write-subs", "--write-auto-subs",
-                                     "--sub-lang", language,
-                                     "--print-to-file", "%(subtitles)j", "/dev/stdout"],
-                                    capture_output=True, text=True, timeout=30,
-                                )
-                                if sub_result.stdout:
-                                    return _extract_text_from_subs(sub_result.stdout)
-            except json.JSONDecodeError:
-                pass
+            import glob
+            sub_files = glob.glob(os.path.join(tmpdir, "sub.*.json3"))
+            if not sub_files:
+                sub_files = glob.glob(os.path.join(tmpdir, "sub.*.vtt"))
+            if not sub_files:
+                sub_files = glob.glob(os.path.join(tmpdir, "sub.*"))
 
-            # Fallback: just return the raw output if it looks like text
-            if len(result.stdout) > 50:
-                return result.stdout[:10000]  # Cap at 10k chars
+            if sub_files:
+                with open(sub_files[0]) as f:
+                    raw = f.read()
+                return _extract_text_from_subs(raw)
 
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         logger.warning(f"yt-dlp transcript extraction failed: {e}")
@@ -125,17 +130,26 @@ def _extract_text_from_subs(raw: str) -> str:
     try:
         data = json.loads(raw)
         if isinstance(data, dict) and "events" in data:
-            # json3 format
             texts = []
             for event in data["events"]:
                 segs = event.get("segs", [])
-                for seg in segs:
-                    text = seg.get("utf8", "").strip()
-                    if text and text != "\n":
-                        texts.append(text)
+                text = "".join(seg.get("utf8", "") for seg in segs).strip()
+                if text and text != "\n":
+                    texts.append(text)
             return " ".join(texts)
     except (json.JSONDecodeError, KeyError):
         pass
 
-    # Return raw if we can't parse
+    # Try VTT/SRT: strip headers, timestamps, line numbers
+    lines = raw.split("\n")
+    texts = []
+    for line in lines:
+        line = line.strip()
+        if (line and not line.startswith("WEBVTT") and not line.startswith("Kind:")
+           and not line.startswith("Language:") and "-->" not in line
+           and not line.isdigit() and not line.startswith("NOTE")):
+            texts.append(line)
+    if texts:
+        return " ".join(texts)
+
     return raw[:10000]
