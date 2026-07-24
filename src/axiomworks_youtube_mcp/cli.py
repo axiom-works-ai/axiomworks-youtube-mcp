@@ -52,12 +52,28 @@ def setup():
     else:
         click.echo("  Skipped.\n")
 
-    # Step 3: YouTube Music OAuth
+    # Step 3: YouTube Music
     click.echo("Step 3: YouTube Music (for library, history, playlist management)")
     if click.confirm("  Authenticate with YouTube Music?", default=False):
-        from .clients.ytmusic import setup_ytmusic_oauth
+        click.echo("  Choose authentication method:")
+        click.echo("    1. Browser cookie (recommended — required for library/history)")
+        click.echo("    2. OAuth device code (limited — library endpoints may return 400)")
+        choice = click.prompt("  Method", type=click.Choice(["1", "2"]), default="1")
 
-        success = setup_ytmusic_oauth()
+        if choice == "1":
+            from .clients.ytmusic import setup_ytmusic_browser
+            click.echo(
+                "\n  Paste request headers from Chrome DevTools.\n"
+                "  1. Open https://music.youtube.com in Chrome (logged in)\n"
+                "  2. F12 → Network → click any request to music.youtube.com\n"
+                "  3. Right-click → Copy → Copy request headers\n"
+                "  4. Paste below, then Ctrl-D (or Ctrl-Z Enter on Windows)\n"
+            )
+            success = setup_ytmusic_browser()
+        else:
+            from .clients.ytmusic import setup_ytmusic_oauth
+            success = setup_ytmusic_oauth()
+
         if success:
             click.echo("  YouTube Music authenticated.\n")
         else:
