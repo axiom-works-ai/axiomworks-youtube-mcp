@@ -6,11 +6,13 @@ search, library, playlists, history, charts, and more.
 
 from __future__ import annotations
 
+import json
 import logging
 
 from ytmusicapi import YTMusic
+from ytmusicapi.auth.oauth import OAuthCredentials
 
-from ..config import YTMUSIC_OAUTH_PATH
+from ..config import YTMUSIC_OAUTH_PATH, CONFIG_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,22 @@ def _patch_refreshing_token():
         RefreshingToken._patched = True
 
 
+def _get_oauth_credentials() -> OAuthCredentials | None:
+    """Build OAuthCredentials from client_secrets_tv.json for token refresh."""
+    tv_path = CONFIG_DIR / "client_secrets_tv.json"
+    if not tv_path.exists():
+        return None
+    try:
+        with open(tv_path) as f:
+            tv = json.load(f).get("installed", {})
+        return OAuthCredentials(
+            client_id=tv["client_id"],
+            client_secret=tv["client_secret"],
+        )
+    except (KeyError, json.JSONDecodeError, OSError):
+        return None
+
+
 def get_ytmusic_client(require_auth: bool = False) -> YTMusic:
     """Get or create a YouTube Music client.
 
@@ -55,7 +73,10 @@ def get_ytmusic_client(require_auth: bool = False) -> YTMusic:
                     "YouTube Music authentication required. "
                     "Run `axiomworks-youtube-mcp setup` to authenticate."
                 )
-            _ytmusic_authed = YTMusic(str(YTMUSIC_OAUTH_PATH))
+            _ytmusic_authed = YTMusic(
+                auth=str(YTMUSIC_OAUTH_PATH),
+                oauth_credentials=_get_oauth_credentials(),
+            )
             logger.info("YouTube Music authenticated client initialized")
         return _ytmusic_authed
 

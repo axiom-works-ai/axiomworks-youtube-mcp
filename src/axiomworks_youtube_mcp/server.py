@@ -824,7 +824,9 @@ async def ytmusic_new_releases() -> str:
     from .clients.ytmusic import get_ytmusic_client
 
     ytmusic = get_ytmusic_client()
-    return _format_json(ytmusic.get_new_releases())
+    explore = ytmusic.get_explore()
+    new_videos = explore.get("new_videos", [])
+    return _format_json({"new_videos": new_videos})
 
 
 # ─── Group 9: YouTube Music Library (OAuth required) ────────────────────────

@@ -35,7 +35,18 @@ def get_youtube_client(
     global _youtube_client
 
     if credentials:
-        # OAuth — full access
+        # OAuth — full access.
+        # googleapiclient.build() needs a Credentials object, not a dict.
+        if isinstance(credentials, dict):
+            from google.oauth2.credentials import Credentials
+            credentials = Credentials(
+                token=credentials.get("token"),
+                refresh_token=credentials.get("refresh_token"),
+                token_uri=credentials.get("token_uri"),
+                client_id=credentials.get("client_id"),
+                client_secret=credentials.get("client_secret"),
+                scopes=credentials.get("scopes"),
+            )
         return build("youtube", "v3", credentials=credentials)
 
     if api_key:
