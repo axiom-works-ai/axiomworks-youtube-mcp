@@ -7,6 +7,7 @@ organized by group and handles the server lifecycle.
 from __future__ import annotations
 
 import logging
+import os
 
 from mcp.server.fastmcp import FastMCP
 
@@ -1982,7 +1983,42 @@ async def youtube_analytics_demographics(
     ).execute()
     return _format_analytics_response(response)
 
+if os.environ.get("DISABLE_YOUTUBE_ANALYTICS_REVENUE", "").lower() not in ("1", "true", "yes"):
+    @mcp.tool()
+    async def youtube_analytics_revenue(
+        start_date: str,
+        end_date: str,
+        dimensions: str | None = None,
+    ) -> str:
+        """Get revenue metrics for the channel.
 
+        Requires the yt-analytics-monetary.readonly scope.
+
+        Args:
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
+            dimensions: Optional dimensions (e.g., day, video, country)
+
+        Returns:
+            Revenue data including estimated revenue and ad metrics.
+        """
+        from .clients.analytics import get_analytics_client
+
+        creds = require_oauth()
+        analytics = get_analytics_client(credentials=creds)
+
+        params: dict = {
+            "ids": "channel==MINE",
+            "startDate": start_date,
+            "endDate": end_date,
+            "metrics": "estimatedRevenue,estimatedAdRevenue,grossRevenue,estimatedRedPartnerRevenue",
+        }
+        if dimensions:
+            params["dimensions"] = dimensions
+            params["sort"] = "-estimatedRevenue"
+
+        response = analytics.reports().query(**params).execute()
+        return _format_analytics_response(response)
 
 
 # ─── Group 7: Live Streaming (OAuth required) ───────────────────────────────
