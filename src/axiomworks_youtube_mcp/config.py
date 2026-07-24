@@ -28,7 +28,6 @@ class AuthTier(Enum):
 CONFIG_DIR = Path.home() / ".config" / "axiomworks-youtube-mcp"
 GOOGLE_OAUTH_PATH = CONFIG_DIR / "google-oauth.json"
 YTMUSIC_OAUTH_PATH = CONFIG_DIR / "ytmusic-oauth.json"
-YTMUSIC_BROWSER_PATH = CONFIG_DIR / "ytmusic-browser.json"
 API_KEY_PATH = CONFIG_DIR / "api-key.txt"
 CACHE_DB_PATH = CONFIG_DIR / "cache.db"
 
