@@ -7,6 +7,7 @@ organized by group and handles the server lifecycle.
 from __future__ import annotations
 
 import logging
+import os
 
 from mcp.server.fastmcp import FastMCP
 
@@ -824,7 +825,9 @@ async def ytmusic_new_releases() -> str:
     from .clients.ytmusic import get_ytmusic_client
 
     ytmusic = get_ytmusic_client()
-    return _format_json(ytmusic.get_new_releases())
+    explore = ytmusic.get_explore()
+    new_videos = explore.get("new_videos", [])
+    return _format_json({"new_videos": new_videos})
 
 
 # ─── Group 9: YouTube Music Library (OAuth required) ────────────────────────
@@ -1157,8 +1160,18 @@ async def ytmusic_playlist_remove_items(
     from .clients.ytmusic import get_ytmusic_client
 
     ytmusic = get_ytmusic_client(require_auth=True)
-    # ytmusicapi expects list of dicts with videoId and setVideoId
-    videos = [{"videoId": vid, "setVideoId": vid} for vid in video_ids]
+    # ytmusicapi needs {videoId, setVideoId} dicts. setVideoId is internal ID
+    # that differs from videoId. Fetch from playlist details.
+    pl_data = ytmusic.get_playlist(playlist_id)
+    tracks = pl_data.get("tracks", []) if isinstance(pl_data, dict) else []
+    track_map = {t.get("videoId", ""): t.get("setVideoId", "") for t in tracks if t.get("videoId")}
+    videos = []
+    for vid in video_ids:
+        svid = track_map.get(vid, "")
+        if svid:
+            videos.append({"videoId": vid, "setVideoId": svid})
+    if not videos:
+        return f"No matching tracks found in playlist {playlist_id}."
     ytmusic.remove_playlist_items(playlist_id, videos)
     return f"Removed {len(video_ids)} items from playlist {playlist_id}."
 
@@ -1980,42 +1993,42 @@ async def youtube_analytics_demographics(
     ).execute()
     return _format_analytics_response(response)
 
+if os.environ.get("DISABLE_YOUTUBE_ANALYTICS_REVENUE", "").lower() not in ("1", "true", "yes"):
+    @mcp.tool()
+    async def youtube_analytics_revenue(
+        start_date: str,
+        end_date: str,
+        dimensions: str | None = None,
+    ) -> str:
+        """Get revenue metrics for the channel.
 
-@mcp.tool()
-async def youtube_analytics_revenue(
-    start_date: str,
-    end_date: str,
-    dimensions: str | None = None,
-) -> str:
-    """Get revenue metrics for the channel.
+        Requires the yt-analytics-monetary.readonly scope.
 
-    Requires the yt-analytics-monetary.readonly scope.
+        Args:
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
+            dimensions: Optional dimensions (e.g., day, video, country)
 
-    Args:
-        start_date: Start date (YYYY-MM-DD)
-        end_date: End date (YYYY-MM-DD)
-        dimensions: Optional dimensions (e.g., day, video, country)
+        Returns:
+            Revenue data including estimated revenue and ad metrics.
+        """
+        from .clients.analytics import get_analytics_client
 
-    Returns:
-        Revenue data including estimated revenue and ad metrics.
-    """
-    from .clients.analytics import get_analytics_client
+        creds = require_oauth()
+        analytics = get_analytics_client(credentials=creds)
 
-    creds = require_oauth()
-    analytics = get_analytics_client(credentials=creds)
+        params: dict = {
+            "ids": "channel==MINE",
+            "startDate": start_date,
+            "endDate": end_date,
+            "metrics": "estimatedRevenue,estimatedAdRevenue,grossRevenue,estimatedRedPartnerRevenue",
+        }
+        if dimensions:
+            params["dimensions"] = dimensions
+            params["sort"] = "-estimatedRevenue"
 
-    params: dict = {
-        "ids": "channel==MINE",
-        "startDate": start_date,
-        "endDate": end_date,
-        "metrics": "estimatedRevenue,estimatedAdRevenue,grossRevenue,estimatedRedPartnerRevenue",
-    }
-    if dimensions:
-        params["dimensions"] = dimensions
-        params["sort"] = "-estimatedRevenue"
-
-    response = analytics.reports().query(**params).execute()
-    return _format_analytics_response(response)
+        response = analytics.reports().query(**params).execute()
+        return _format_analytics_response(response)
 
 
 # ─── Group 7: Live Streaming (OAuth required) ───────────────────────────────

@@ -23,4 +23,14 @@ def get_analytics_client(credentials: object):
     Returns:
         YouTube Analytics API resource object.
     """
+    if isinstance(credentials, dict):
+        from google.oauth2.credentials import Credentials
+        credentials = Credentials(
+            token=credentials.get("token"),
+            refresh_token=credentials.get("refresh_token"),
+            token_uri=credentials.get("token_uri"),
+            client_id=credentials.get("client_id"),
+            client_secret=credentials.get("client_secret"),
+            scopes=credentials.get("scopes"),
+        )
     return build("youtubeAnalytics", "v2", credentials=credentials)

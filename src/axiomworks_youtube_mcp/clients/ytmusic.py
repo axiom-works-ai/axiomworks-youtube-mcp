@@ -6,11 +6,13 @@ search, library, playlists, history, charts, and more.
 
 from __future__ import annotations
 
+import json
 import logging
 
 from ytmusicapi import YTMusic
+from ytmusicapi.auth.oauth import OAuthCredentials
 
-from ..config import YTMUSIC_OAUTH_PATH
+from ..config import YTMUSIC_OAUTH_PATH, YTMUSIC_BROWSER_PATH, CONFIG_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,22 @@ def _patch_refreshing_token():
         RefreshingToken._patched = True
 
 
+def _get_oauth_credentials() -> OAuthCredentials | None:
+    """Build OAuthCredentials from client_secrets_tv.json for token refresh."""
+    tv_path = CONFIG_DIR / "client_secrets_tv.json"
+    if not tv_path.exists():
+        return None
+    try:
+        with open(tv_path) as f:
+            tv = json.load(f).get("installed", {})
+        return OAuthCredentials(
+            client_id=tv["client_id"],
+            client_secret=tv["client_secret"],
+        )
+    except (KeyError, json.JSONDecodeError, OSError):
+        return None
+
+
 def get_ytmusic_client(require_auth: bool = False) -> YTMusic:
     """Get or create a YouTube Music client.
 
@@ -50,13 +68,22 @@ def get_ytmusic_client(require_auth: bool = False) -> YTMusic:
 
     if require_auth:
         if _ytmusic_authed is None:
-            if not YTMUSIC_OAUTH_PATH.exists():
+            # Prefer browser cookie auth (SAPISIDHASH) — required for library/history.
+            # TV OAuth tokens lack user identity, so YT Music internal API returns 400.
+            if YTMUSIC_BROWSER_PATH.exists():
+                _ytmusic_authed = YTMusic(auth=str(YTMUSIC_BROWSER_PATH))
+                logger.info("YouTube Music client initialized (browser cookie auth)")
+            elif YTMUSIC_OAUTH_PATH.exists():
+                _ytmusic_authed = YTMusic(
+                    auth=str(YTMUSIC_OAUTH_PATH),
+                    oauth_credentials=_get_oauth_credentials(),
+                )
+                logger.info("YouTube Music client initialized (OAuth — library tools may be limited)")
+            else:
                 raise ValueError(
                     "YouTube Music authentication required. "
                     "Run `axiomworks-youtube-mcp setup` to authenticate."
                 )
-            _ytmusic_authed = YTMusic(str(YTMUSIC_OAUTH_PATH))
-            logger.info("YouTube Music authenticated client initialized")
         return _ytmusic_authed
 
     # Public client — no auth, limited to browsing/search
@@ -67,13 +94,10 @@ def get_ytmusic_client(require_auth: bool = False) -> YTMusic:
 
 
 def setup_ytmusic_oauth() -> bool:
-    """Run the YouTube Music OAuth setup flow.
+    """Run the YouTube Music OAuth setup flow (TV/Limited Input device).
 
-    Uses ytmusicapi's OAuth with a TV/Limited Input device client
-    (required by ytmusicapi's device code flow).
-
-    Includes a workaround for ytmusicapi bug where Google's OAuth response
-    includes 'refresh_token_expires_in' which RefreshingToken doesn't accept.
+    Note: TV OAuth tokens lack user identity, so YT Music library/history
+    endpoints may return HTTP 400. For library access, use setup_ytmusic_browser().
 
     Returns:
         True if setup succeeded.
@@ -123,4 +147,24 @@ def setup_ytmusic_oauth() -> bool:
         return True
     except Exception as e:
         logger.error(f"YouTube Music OAuth setup failed: {e}")
+        return False
+
+
+def setup_ytmusic_browser() -> bool:
+    """Run the YouTube Music browser cookie setup.
+
+    Prompts user to paste request headers from Chrome DevTools.
+    Browser auth (SAPISIDHASH) is required for library/history endpoints.
+
+    Returns:
+        True if setup succeeded.
+    """
+    try:
+        from ytmusicapi import setup
+
+        setup(filepath=str(YTMUSIC_BROWSER_PATH))
+        logger.info(f"YouTube Music browser auth saved to {YTMUSIC_BROWSER_PATH}")
+        return True
+    except Exception as e:
+        logger.error(f"YouTube Music browser setup failed: {e}")
         return False
