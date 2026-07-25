@@ -1160,8 +1160,18 @@ async def ytmusic_playlist_remove_items(
     from .clients.ytmusic import get_ytmusic_client
 
     ytmusic = get_ytmusic_client(require_auth=True)
-    # ytmusicapi expects list of dicts with videoId and setVideoId
-    videos = [{"videoId": vid, "setVideoId": vid} for vid in video_ids]
+    # ytmusicapi needs {videoId, setVideoId} dicts. setVideoId is internal ID
+    # that differs from videoId. Fetch from playlist details.
+    pl_data = ytmusic.get_playlist(playlist_id)
+    tracks = pl_data.get("tracks", []) if isinstance(pl_data, dict) else []
+    track_map = {t.get("videoId", ""): t.get("setVideoId", "") for t in tracks if t.get("videoId")}
+    videos = []
+    for vid in video_ids:
+        svid = track_map.get(vid, "")
+        if svid:
+            videos.append({"videoId": vid, "setVideoId": svid})
+    if not videos:
+        return f"No matching tracks found in playlist {playlist_id}."
     ytmusic.remove_playlist_items(playlist_id, videos)
     return f"Removed {len(video_ids)} items from playlist {playlist_id}."
 
